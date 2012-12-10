@@ -4,7 +4,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 
-public class ExtraTrees {
+public class ExtraTrees extends AbstractTrees<BinaryTree> {
 	Matrix input;
 	double[] output;
 	double[] outputSq;
@@ -12,7 +12,9 @@ public class ExtraTrees {
 	/** later shuffled and used for choosing random columns at each node */
 	ArrayList<Integer> cols;
 	
-	BinaryTree[] trees;
+	// defined in AbstractTrees:
+	//ArrayList<BinaryTree> trees;
+	
 	/** number of random cuts tried for each feature */
 	int numRandomCuts = 1;
 	/** whether random cuts are totally uniform or evenly uniform */
@@ -56,61 +58,32 @@ public class ExtraTrees {
 		this.numRandomCuts = numRandomCuts;
 	}
 	
-	/**
-	 * stores trees with the ExtraTrees object.
-	 * @param nmin
-	 * @param K
-	 * @param nTrees
-	 */
-	public void learnTrees(int nmin, int K, int nTrees) {
-		this.trees = buildTrees(nmin, K, nTrees);
-	}
-	
-	/**
- 	 * good values:
-	 * n_min = 2 (size of tree element)
-	 * K = 5     (# of random choices)
-	 * M = 50    (# of trees)
-	 * if n_min is chosen by CV, then we have pruned version
-
-	 * @param nmin   - size of tree element
-	 * @param K      - # of random choices
-	 * @param nTrees - # of trees
-	 * @return
-	 */
-	public BinaryTree[] buildTrees(int nmin, int K, int nTrees) {
-		BinaryTree[] trees = new BinaryTree[nTrees];
-		for (int t=0; t<trees.length; t++) {
-			trees[t] = this.buildTree(nmin, K);
+	/** Builds trees with ids */
+	public ArrayList<BinaryTree> buildTrees(int nmin, int K, int nTrees, int[] ids) {
+		ArrayList<BinaryTree> trees = new ArrayList<BinaryTree>(nTrees);
+		ShuffledIterator<Integer> cols = new ShuffledIterator<Integer>(this.cols);
+		for (int t=0; t<nTrees; t++) {
+			trees.add( this.buildTree(nmin, K, ids, cols) );
 		}
 		return trees;
 	}
 	
-	/** Builds trees with ids */
-	public BinaryTree[] buildTrees(int nmin, int K, int nTrees, int[] ids) {
-		BinaryTree[] trees = new BinaryTree[nTrees];
-		for (int t=0; t<trees.length; t++) {
-			trees[t] = this.buildTree(nmin, K, ids);
-		}
-		return trees;		
-	}
-	
 	/** Average of several trees: */
-	public static double getValue(BinaryTree[] trees, double[] input) {
+	public static double getValue(ArrayList<BinaryTree> trees, double[] input) {
 		double output = 0;
 		for(BinaryTree t : trees) {
 			output += t.getValue(input);
 		}
-		return output/trees.length;
+		return output/trees.size();
 	}
 
 	/** Average of several trees, using nmin as depth */
-	public static double getValue(BinaryTree[] trees, double[] input, int nmin) {
+	public static double getValue(ArrayList<BinaryTree> trees, double[] input, int nmin) {
 		double output = 0;
 		for(BinaryTree t : trees) {
 			output += t.getValue(input, nmin);
 		}
-		return output/trees.length;
+		return output/trees.size();
 	}
 	
 	/**
@@ -123,7 +96,7 @@ public class ExtraTrees {
 	}
 
 	/** Average of several trees for many samples */
-	public static double[] getValues(BinaryTree[] trees, Matrix input) {
+	public static double[] getValues(ArrayList<BinaryTree> trees, Matrix input) {
 		double[] values = new double[input.nrows];
 		double[] temp = new double[input.ncols];
 		for (int row=0; row<input.nrows; row++) {
@@ -141,21 +114,31 @@ public class ExtraTrees {
 	 * @param nmin - number of elements in leaf node
 	 * @param K    - number of choices
 	 */
+	@Override
 	public BinaryTree buildTree(int nmin, int K) {
 		// generating full list of ids:
 		int[]    ids = new int[output.length];
 		for (int i=0; i<ids.length; i++) {
 			ids[i] = i;
 		}
-		return buildTree(nmin, K, ids);
+		ShuffledIterator<Integer> cols = new ShuffledIterator<Integer>(this.cols);
+		return buildTree(nmin, K, ids, cols);
 	}
 	
-	public BinaryTree buildTree(int nmin, int K, int[] ids) {
+	/**
+	 * 
+	 * @param nmin
+	 * @param K
+	 * @param ids
+	 * @param randomCols - passed to save memory (maybe not needed)
+	 * @return
+	 */
+	public BinaryTree buildTree(int nmin, int K, int[] ids, ShuffledIterator<Integer> randomCols) {
 		if (ids.length<nmin) {
 			return makeLeaf(ids);
 		}
 		// doing a shuffle of cols:
-		Collections.shuffle(this.cols);
+		randomCols.reset();
 		
 		// trying K trees or the number of non-constant columns,
 		// whichever is smaller:
@@ -164,8 +147,9 @@ public class ExtraTrees {
 		boolean leftConst = false, rightConst = false;
 		int countLeftBest = 0, countRightBest = 0;
 		double t_best=Double.NaN;
-		for (int i=0; i<cols.size(); i++) {
-			int col = cols.get(i);
+		//for (int i=0; i<randomCols.size(); i++) {
+		while( randomCols.hasNext() ) {
+			int col = randomCols.next();
 			// calculating columns min and max:
 			double col_min = Double.POSITIVE_INFINITY;
 			double col_max = Double.NEGATIVE_INFINITY;
@@ -260,12 +244,12 @@ public class ExtraTrees {
 		if (leftConst) { 
 			bt.left = makeLeaf(idsLeft); // left child's output is constant 
 		} else {  
-			bt.left  = this.buildTree(nmin, K, idsLeft); 
+			bt.left  = this.buildTree(nmin, K, idsLeft, randomCols); 
 		}
 		if (rightConst) {
 			bt.right = makeLeaf(idsRight); // right child's output is constant
 		} else {
-			bt.right = this.buildTree(nmin, K, idsRight);
+			bt.right = this.buildTree(nmin, K, idsRight, randomCols);
 		}
 		// this value is used only for CV:
 		bt.value  = bt.left.value*bt.left.nSuccessors + bt.right.value*bt.right.nSuccessors;
@@ -321,7 +305,7 @@ public class ExtraTrees {
 	 * @param testOutput
 	 * @return mean squared error on the test input and output.
 	 */
-	public static double getMeanSqError(BinaryTree[] trees, Matrix testInput, double[] testOutput) {
+	public static double getMeanSqError(ArrayList<BinaryTree> trees, Matrix testInput, double[] testOutput) {
 		double error = 0;
 		//double[] output_hat = getValues(trees, testInput);
 		double[] temp = new double[testInput.ncols];
@@ -341,7 +325,7 @@ public class ExtraTrees {
 	 * @return mean squared error calculated only 
 	 *         using data rows in testIds as test input-output.
 	 **/
-	public static double getMeanSqError(BinaryTree[] trees, 
+	public static double getMeanSqError(ArrayList<BinaryTree> trees, 
 			Matrix testInput, double[] testOutput, 
 			int nmin, int[] testIds)
 	{
@@ -360,7 +344,7 @@ public class ExtraTrees {
 		return error/testIds.length;
 	}
 
-	public static double getMeanAbsError(BinaryTree[] trees, Matrix testInput, double[] testOutput) {
+	public static double getMeanAbsError(ArrayList<BinaryTree> trees, Matrix testInput, double[] testOutput) {
 		double error = 0;
 		double[] output_hat = getValues(trees, testInput);
 		for (int n=0; n<testOutput.length; n++) {
@@ -369,7 +353,7 @@ public class ExtraTrees {
 		return error/testOutput.length;
 	}
 	
-	public BinaryTree[] buildTreeCV(int K, int nTrees) {
+	public ArrayList<BinaryTree> buildTreeCV(int K, int nTrees) {
 		int[] nmins = {2, 3, 5, 9, 14};
 		int trainSize = (int)(2d/3d*output.length);
 		
@@ -389,7 +373,7 @@ public class ExtraTrees {
 		}
 		
 		// building model:
-		BinaryTree[] t = this.buildTrees(2, K, nTrees, idsTrain);
+		ArrayList<BinaryTree> t = this.buildTrees(2, K, nTrees, idsTrain);
 		double[] errors = new double[nmins.length];
 		double error_best = Double.POSITIVE_INFINITY;
 		int nmin_best = nmins[0];
@@ -403,7 +387,7 @@ public class ExtraTrees {
 		//System.out.println( Arrays.toString(errors) );
 		//System.out.println( String.format("Using nmin=%d based on CV.", nmin_best) );
 		// building full model:
-		BinaryTree[] trees = this.buildTrees(nmin_best, K, nTrees);
+		ArrayList<BinaryTree> trees = this.buildTrees(nmin_best, K, nTrees);
 		return trees;
 	}
 	
@@ -412,18 +396,19 @@ public class ExtraTrees {
 	 * @param args
 	 */
 	public static void main(String[] args) {
-		int ndata  = 100000, ndim=7;
+		int ndata  = 10000, ndim=7;
 		int nTrees = 15;
 		
 		ExtraTrees et = getSampleData(ndata, ndim);
 		Date t3 = new Date();
-//		BinaryTree[] m = et.buildTreeCV(ndim, nTrees);
+//		ArrayList<BinaryTree> m = et.buildTreeCV(ndim, nTrees);
 		Date t4 = new Date();
 		System.out.println( "Took: " + (t4.getTime()-t3.getTime())/1000.0 + "s");
-		int x=1;
-		if (x==1) return;
+		//int x=1;
+		//if (x==1) return;
 		Date t1 = new Date();
-		BinaryTree[] trees = et.buildTrees(2, 6, nTrees);
+		et.learnTrees(2, 6, nTrees);
+		ArrayList<BinaryTree> trees = et.trees;
 		Date t2 = new Date();
 		
 		ExtraTrees et2 = getSampleData(1000, ndim);
