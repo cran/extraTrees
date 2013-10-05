@@ -18,7 +18,34 @@ toJavaMatrix <- function( m ) {
     ))
 }
 
+## creates a new extraTrees object based on selection
+selectTrees <- function( object, selection ) {
+    ## checking if right object:
+    if (!inherits(object, "extraTrees")) {
+        stop("object not of class extraTrees")
+    }
+    ## checking selection is logical:
+    if (!is.logical(selection)) {
+        stop("selection should be list of logical (T/F) values.")
+    }
+    ## checking selection has correct length:
+    if (length(selection)!=object$ntree) {
+        stop(sprintf("Length of selection (%d) should be equal to the number of trees (%d)", length(selection), object$ntree))
+    }
+    ## choosing the correct class:
+    if (object$factor) {
+        etClass = "Lorg/extratrees/FactorExtraTrees;"
+    } else {
+        etClass = "Lorg/extratrees/ExtraTrees;"
+    }
+    ## copying S3 object and creating new java object:
+    etNew = object
+    etNew$jobject = .jcall(object$jobject, etClass, "selectTrees", .jarray(selection) )
+    etNew$ntree = .jcall(etNew$jobject, "I", "getNumTrees" )
+    return(etNew)
+}
 
+## main extraTree training function
 extraTrees.default <- function(x, y, 
              #xtest=NULL, ytest=NULL, 
              ntree=500,
@@ -28,6 +55,10 @@ extraTrees.default <- function(x, y,
              numRandomCuts = 1,
              evenCuts = FALSE,
              numThreads = 1,
+             quantile = F,
+             tasks = NULL,
+             probOfTaskCuts = 1.0,
+             numRandomTaskCuts = 1,
              ...) {
     n <- nrow(x)
     p <- ncol(x)
@@ -36,13 +67,10 @@ extraTrees.default <- function(x, y,
     x.col.names <- if (is.null(colnames(x))) 1:ncol(x) else colnames(x)
     
     ## making sure no NAs:
-    if ( any(is.na(y)) ) {
-        stop("Output vector y contains NAs.")
-    }
-    if ( any(is.na(x)) ) {
-        stop("Input matrix x contains NAs.")
-    }
-
+    if ( any(is.na(y)) ) stop("Output vector y contains NAs.")
+    if ( any(is.na(x)) ) stop("Input matrix x contains NAs.")
+    if ( !is.null(tasks) && any(is.na(tasks)) ) stop("Task vector contains NAs.")
+    
     ## uncomment when xtest/ytest are used:
     #testdat <- !is.null(xtest)
     #if (testdat) {
@@ -61,26 +89,59 @@ extraTrees.default <- function(x, y,
     et$numRandomCuts = numRandomCuts
     et$evenCuts = evenCuts
     et$numThreads = numThreads
+    et$quantile   = quantile
+    et$multitask  = ! is.null(tasks)
+    et$probOfTaskCuts = probOfTaskCuts
+    et$numRandomTaskCuts = numRandomTaskCuts
     class(et) = "extraTrees"
+
+    if (nrow(x)!=length(y)) {
+        stop(sprintf("Length of y (%d) is not equal to the number of inputs in x (%d).", length(y), nrow(x) ) )
+    }
+    
+    ## making sure if tasks is present there are only two factors
+    if ( ! is.null(tasks) ) {
+        if (nrow(x)!=length(tasks)) {
+            stop(sprintf("Length of tasks (%d) is not equal to the number of inputs in x (%d).", length(tasks), nrow(x) ) )
+        }
+        if ( et$factor && length(unique(y)) != 2 ) {
+            stop("Multi-task learning only works with 2 factors (binary classification). 3 or more classes is not supported.")
+        }
+        if (min(tasks) < 1) {
+            stop("Tasks should be positive integers.")
+        }
+        if ( et$quantile ) {
+            stop("Quantile regression is not (yet) supported with multi-task learning.")
+        }
+    }
 
     if (et$factor && length(unique(y)) < 2) {
         stop("Need at least two classes to do classification.")
     }
     if (et$factor) {
+        if (quantile) {
+            stop("Option quantile cannot be used for classification.")
+        }
         ## classification:
         et$levels = levels(y)
-        #stop("classification with extraTrees is not yet implemented.")
         ## creating FactorExtraTree object with the data
-        et$jobject  = .jnew(
+        et$jobject = .jnew(
             "org.extratrees.FactorExtraTrees",
             toJavaMatrix(x),
             .jarray( as.integer( as.integer(y)-1 ) )
         )
         .jcall( et$jobject, "V", "setnFactors", as.integer(length(et$levels)) )
+    } else if (et$quantile) {
+        ## quantile regression:
+        et$jobject = .jnew(
+            "org.extratrees.QuantileExtraTrees",
+            toJavaMatrix(x),
+            .jarray(y)
+        )
     } else {
         ## regression:
         ## creating ExtraTree object with the data
-        et$jobject  = .jnew(
+        et$jobject = .jnew(
             "org.extratrees.ExtraTrees",
             toJavaMatrix(x),
             .jarray(y)
@@ -90,6 +151,12 @@ extraTrees.default <- function(x, y,
     .jcall( et$jobject, "V", "setNumRandomCuts", as.integer(et$numRandomCuts) )
     .jcall( et$jobject, "V", "setEvenCuts", et$evenCuts )
     .jcall( et$jobject, "V", "setNumThreads", as.integer(et$numThreads) )
+    ## multitask variables:
+    if (et$multitask) {
+        .jcall( et$jobject, "V", "setTasks", .jarray(as.integer(tasks-1)) )
+        .jcall( et$jobject, "V", "setProbOfTaskCuts", et$probOfTaskCuts )
+        .jcall( et$jobject, "V", "setNumRandomTaskCuts", as.integer(et$numRandomTaskCuts) )
+    }
     
     ## learning the trees (stored at the et$jobject)
     .jcall( et$jobject, "V", "learnTrees", as.integer(et$nodesize), as.integer(et$mtry), as.integer(et$ntree) )

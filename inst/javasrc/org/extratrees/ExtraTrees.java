@@ -3,26 +3,31 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.Set;
 
 public class ExtraTrees extends AbstractTrees<BinaryTree> {
-	Matrix input;
 	double[] output;
 	double[] outputSq;
-	static double zero=1e-6;
-	/** later shuffled and used for choosing random columns at each node */
-	ArrayList<Integer> cols;
 	
 	// defined in AbstractTrees:
 	//ArrayList<BinaryTree> trees;
-	
-	/** number of random cuts tried for each feature */
-	int numRandomCuts = 1;
-	/** whether random cuts are totally uniform or evenly uniform */
-	boolean evenCuts = false;
-
 	public ExtraTrees(Matrix input, double[] output) {
+		this(input, output, null);
+	}
+
+
+	/**
+	 * @param input    - matrix of inputs, each row is an input vector
+	 * @param output   - array of output values (doubles)
+	 * @param tasks    - array of task indeces from 0 nTasks-1, null if no multi-task learning
+	 */
+	public ExtraTrees(Matrix input, double[] output, int[] tasks) {
 		if (input.nrows!=output.length) {
 			throw(new IllegalArgumentException("Input and output do not have same length."));
+		}
+		if (tasks!=null && input.nrows!=tasks.length) {
+			throw(new IllegalArgumentException("Input and tasks do not have the same number of data points."));
 		}
 		this.input = input;
 		this.output = output;
@@ -30,6 +35,8 @@ public class ExtraTrees extends AbstractTrees<BinaryTree> {
 		for (int i=0; i<output.length; i++) {
 			this.outputSq[i] = this.output[i]*this.output[i]; 
 		}
+		setTasks(tasks);
+		
 		// making cols list for later use:
 		this.cols = new ArrayList<Integer>(input.ncols);
 		for (int i=0; i<input.ncols; i++) {
@@ -37,25 +44,21 @@ public class ExtraTrees extends AbstractTrees<BinaryTree> {
 		}
 	}
 	
-	public boolean isEvenCuts() {
-		return evenCuts;
-	}
-	
 	/**
-	 * @param evenCuts - whether the random cuts (if more than 1) are
-	 * sampled from fixed even intervals (true) 
-	 * or just sampled ordinary uniform way (false)
+	 * @param selection
+	 * @return new ExtraTrees object with the same input and output data with
+	 * only the selected trees specified by {@code selection}.
 	 */
-	public void setEvenCuts(boolean evenCuts) {
-		this.evenCuts = evenCuts;
-	}
-	
-	public int getNumRandomCuts() {
-		return numRandomCuts;
-	}
-	
-	public void setNumRandomCuts(int numRandomCuts) {
-		this.numRandomCuts = numRandomCuts;
+	public ExtraTrees selectTrees(boolean[] selection) {
+		ExtraTrees newET = new ExtraTrees(input, output);
+		newET.trees = new ArrayList<BinaryTree>();
+		for (int i=0; i<selection.length; i++) {
+			if (!selection[i]) {
+				continue;
+			}
+			newET.trees.add(this.trees.get(i));
+		}
+		return newET;
 	}
 	
 	/** Builds trees with ids */
@@ -63,7 +66,7 @@ public class ExtraTrees extends AbstractTrees<BinaryTree> {
 		ArrayList<BinaryTree> trees = new ArrayList<BinaryTree>(nTrees);
 		ShuffledIterator<Integer> cols = new ShuffledIterator<Integer>(this.cols);
 		for (int t=0; t<nTrees; t++) {
-			trees.add( this.buildTree(nmin, K, ids, cols) );
+			trees.add( this.buildTree(nmin, K, ids, cols, getSequenceSet(nTasks)) );
 		}
 		return trees;
 	}
@@ -87,6 +90,25 @@ public class ExtraTrees extends AbstractTrees<BinaryTree> {
 	}
 	
 	/**
+	 * @param input
+	 * @return matrix of predictions where
+	 * output[i, j] gives prediction made for i-th row of input by j-th tree. 
+	 */
+	public Matrix getAllValues(Matrix input) {
+		Matrix out = new Matrix( input.nrows, trees.size() );
+		// temporary vector:
+		double[] temp = new double[input.ncols];
+		for (int row=0; row<input.nrows; row++) {
+			input.copyRow(row, temp);
+			for (int j=0; j<trees.size(); j++) {
+				out.set( row, j, trees.get(j).getValue(temp) );
+			}
+		}
+		return out;
+	}
+	
+
+	/**
 	 * Object method, using the trees stored by learnTrees(...) method.
 	 * @param input
 	 * @return
@@ -101,171 +123,271 @@ public class ExtraTrees extends AbstractTrees<BinaryTree> {
 		double[] temp = new double[input.ncols];
 		for (int row=0; row<input.nrows; row++) {
 			// copying matrix row to temp:
-			for (int col=0; col<input.ncols; col++) {
-				temp[col] = input.get(row, col);
-			}
+			input.copyRow(row, temp);
 			values[row] = getValue(trees, temp);
 		}
 		return values;
 	}
 	
+	public double[] getValuesMT(Matrix newInput, int[] tasks) {
+		double[] values = new double[newInput.nrows];
+		double[] temp = new double[newInput.ncols];
+		for (int row=0; row<newInput.nrows; row++) {
+			// copying matrix row to temp:
+			for (int col=0; col<newInput.ncols; col++) {
+				temp[col] = newInput.get(row, col);
+			}
+			values[row] = this.getValueMT(temp, tasks[row]);
+		}
+		return values;
+	}
+
+	public double getValueMT(double[] x, int task) {
+		double mean = 0;
+		for(BinaryTree t : trees) {
+			mean += t.getValueMT(x, task);
+		}
+		mean /= trees.size();
+		return mean;
+	}
 
 	/**
-	 * @param nmin - number of elements in leaf node
-	 * @param K    - number of choices
+	 * @param input
+	 * @return matrix of predictions where
+	 * output[i, j] gives prediction made for i-th row of input by j-th tree.
 	 */
-	@Override
-	public BinaryTree buildTree(int nmin, int K) {
-		// generating full list of ids:
-		int[]    ids = new int[output.length];
-		for (int i=0; i<ids.length; i++) {
-			ids[i] = i;
+	public Matrix getAllValuesMT(Matrix input, int[] tasks) {
+		if (input.nrows!=tasks.length) {
+			throw new IllegalArgumentException("Inputs and tasks do not have the same length.");
 		}
-		ShuffledIterator<Integer> cols = new ShuffledIterator<Integer>(this.cols);
-		return buildTree(nmin, K, ids, cols);
+		Matrix out = new Matrix( input.nrows, trees.size() );
+		// temporary vector:
+		double[] temp = new double[input.ncols];
+		for (int row=0; row<input.nrows; row++) {
+			input.copyRow(row, temp);
+			for (int j=0; j<trees.size(); j++) {
+				out.set( row, j, trees.get(j).getValueMT(temp, tasks[row]) );
+			}
+		}
+		return out;
+	}
+
+	
+
+	@Override
+	protected BinaryTree makeFilledTree(BinaryTree leftTree, BinaryTree rightTree,
+			int col_best, double t_best, int nSuccessors) {
+		BinaryTree bt = new BinaryTree();
+		bt.column    = col_best;
+		bt.threshold = t_best;
+		bt.nSuccessors = nSuccessors;
+		bt.left   = leftTree;
+		bt.right  = rightTree;
+		// value in intermediate nodes (used for CV):
+		bt.value  = bt.left.value*bt.left.nSuccessors + bt.right.value*bt.right.nSuccessors;
+		bt.value /= bt.nSuccessors;
+		return bt;
+	}
+
+	@Override
+	protected void calculateCutScore(int[] ids, int col, double t,
+			CutResult result) {
+		// calculating score:
+		double sumLeft=0, sumRight=0;
+		double sumSqLeft=0, sumSqRight=0;
+		for (int n=0; n<ids.length; n++) {
+			if (input.get(ids[n], col) < t) {
+				result.countLeft++;
+				sumLeft   += output[  ids[n]];
+				sumSqLeft += outputSq[ids[n]];
+			} else {
+				result.countRight++;
+				sumRight   += output[  ids[n]];
+				sumSqRight += outputSq[ids[n]];
+			}
+		}
+		// calculating score:
+		cutResultFromSums(result, sumLeft, sumRight, sumSqLeft, sumSqRight, result.countLeft, result.countRight);
+		// value in intermediate nodes (used for CV):
+	}
+
+	/**
+	 * 
+	 * @param result
+	 * @param sumLeft
+	 * @param sumRight
+	 * @param sumSqLeft
+	 * @param sumSqRight
+	 * @param countLeft   separate left  count (regularized in the case of task cut)
+	 * @param countRight  separate right count (regularized in the case of task cut)
+	 */
+	private void cutResultFromSums(CutResult result, double sumLeft,
+			double sumRight, double sumSqLeft, double sumSqRight, 
+			double countLeft, double countRight) {
+		double varLeft  = sumSqLeft/countLeft  - 
+				(sumLeft/countLeft)*(sumLeft/countLeft);
+		double varRight = sumSqRight/countRight- 
+				(sumRight/countRight)*(sumRight/countRight);
+		// TODO: move var and var<zero*zero outside this loop:
+		//double var = (sumSqLeft+sumSqRight)/ids.length - Math.pow((sumLeft+sumRight)/ids.length, 2.0);
+		// the smaller the score the better:
+		result.score = (result.countLeft*varLeft + result.countRight*varRight);// / ids.length / var;
+		result.leftConst  = (varLeft<zero*zero);
+		result.rightConst = (varRight<zero*zero);
+	}
+
+	@Override
+	protected TaskCutResult getTaskCut(int[] ids, Set<Integer> nodeTasks,
+			double bestScore) {
+		// return null if not at least 2 tasks
+		if (nodeTasks.size() <= 1) {
+			return null;
+		}
+		
+		double mean  = getOutputMean(ids);
+		int[] counts   = new int[nTasks];
+		double[] regcounts= new double[nTasks];
+		double[] sums  = new double[nTasks];
+		double[] sumSq = new double[nTasks];
+		double[] p = getTaskScores(ids, mean, nodeTasks, counts, regcounts, sums, sumSq);
+
+		// check if there are at least two tasks
+		if (! hasAtLeast2Tasks(ids) ) {
+			return null;
+		}
+		
+		double[] range = getRange(p);
+		TaskCutResult bestResult = null;
+		
+		for (int repeat=0; repeat<this.numRandomTaskCuts; repeat++) {
+			// get random cut:
+			double t = getRandom(range[0], range[1]);
+			TaskCutResult result = new TaskCutResult();
+			calculateTaskCutScore(p, counts, regcounts, sums, sumSq, mean, t, result, nodeTasks);
+			if (result.score < bestScore) {
+				bestResult = result;
+				bestScore  = result.score;
+			}
+		}
+		return bestResult;
+	}
+
+	private void calculateTaskCutScore(double[] taskScores,
+			int[] counts,
+			double[] regcounts, 
+			double[] sums,
+			double[] sumSq,
+			double mean, 
+			double t,
+			TaskCutResult result, 
+			Set<Integer> nodeTasks) 
+	{
+		double sumLeft    = 0;
+		double sumRight   = 0;
+		double sumSqLeft  = 0;
+		double sumSqRight = 0;
+		double regcountLeft  = 0;
+		double regcountRight = 0;
+		result.leftTasks  = new HashSet<Integer>();
+		result.rightTasks = new HashSet<Integer>();
+		result.countLeft  = 0;
+		result.countRight = 0;
+		for (int task : nodeTasks) {
+			if (taskScores[task] < t) {
+				// left branch
+				result.leftTasks.add(task);
+				result.countLeft += counts[task];
+				regcountLeft += regcounts[task];
+				sumLeft   += sums[task];
+				sumSqLeft += sumSq[task];
+			} else {
+				// right branch
+				result.rightTasks.add(task);
+				result.countRight += counts[task];
+				regcountRight += regcounts[task];
+				sumRight   += sums[task];
+				sumSqRight += sumSq[task];
+			}
+		}
+		cutResultFromSums(result, sumLeft, sumRight, sumSqLeft, sumSqRight, 
+				regcountLeft, regcountRight);
+	}
+
+	private boolean hasAtLeast2Tasks(int[] ids) {
+		int task0 = this.tasks[ids[0]];
+		for (int i=1; i<ids.length; i++) {
+			if (task0 != this.tasks[ids[i]]) {
+				return true;
+			}
+		}
+		return false;
 	}
 	
 	/**
 	 * 
-	 * @param nmin
-	 * @param K
 	 * @param ids
-	 * @param randomCols - passed to save memory (maybe not needed)
+	 * @param priorMean
+	 * @param nodeTasks
+	 * @param counts    filled by this method (NOT adjusted for regularization)
+	 * @param regcounts filled by this method (adjusted for regularization)
+	 * @param sums      filled by this method (adjusted for regularization)
+	 * @param sumSq     filled by this method (adjusted for regularization)
 	 * @return
 	 */
-	public BinaryTree buildTree(int nmin, int K, int[] ids, ShuffledIterator<Integer> randomCols) {
-		if (ids.length<nmin) {
-			return makeLeaf(ids);
-		}
-		// doing a shuffle of cols:
-		randomCols.reset();
+	private double[] getTaskScores(int[] ids, double priorMean, Set<Integer> nodeTasks, 
+			int[] counts,
+			double[] regcounts,
+			double[] sums, 
+			double[] sumSq )
+	{
+		// calculate prior for regularization:
+		double alpha = 1;
 		
-		// trying K trees or the number of non-constant columns,
-		// whichever is smaller:
-		int k = 0, col_best=-1;
-		double score_best = Double.NEGATIVE_INFINITY;
-		boolean leftConst = false, rightConst = false;
-		int countLeftBest = 0, countRightBest = 0;
-		double t_best=Double.NaN;
-		//for (int i=0; i<randomCols.size(); i++) {
-		while( randomCols.hasNext() ) {
-			int col = randomCols.next();
-			// calculating columns min and max:
-			double col_min = Double.POSITIVE_INFINITY;
-			double col_max = Double.NEGATIVE_INFINITY;
-			for (int n=0; n<ids.length; n++) {
-				double v = input.get(ids[n], col);
-				if ( v<col_min ) { col_min = v; }
-				if ( v>col_max ) { col_max = v; }
-			}
-			if (col_max-col_min < zero) {
-				// skipping, because column is constant
-				continue;
-			}
-			// picking random test point numRepeatTries:
-			double diff = (col_max-col_min);
-			for (int repeat=0; repeat<this.numRandomCuts; repeat++) {
-				double t;
-				if (evenCuts) {
-					double iStart = col_min + repeat*diff/numRandomCuts;
-					double iStop  = col_min + (repeat+1)*diff/numRandomCuts;
-					t = Math.random()*(iStop-iStart) + iStart;
-				} else {
-					t = Math.random()*diff + col_min;
-				}
-				
-				// calculating score:
-				int countLeft=0, countRight=0;
-				double sumLeft=0, sumRight=0;
-				double sumSqLeft=0, sumSqRight=0;
-				for (int n=0; n<ids.length; n++) {
-					if (input.get(ids[n], col) < t) {
-						countLeft++;
-						sumLeft   += output[  ids[n]];
-						sumSqLeft += outputSq[ids[n]];
-					} else {
-						countRight++;
-						sumRight   += output[  ids[n]];
-						sumSqRight += outputSq[ids[n]];
-					}
-				}
-				// calculating score:
-				double varLeft  = sumSqLeft/countLeft  - (sumLeft/countLeft)*(sumLeft/countLeft);
-				double varRight = sumSqRight/countRight- (sumRight/countRight)*(sumRight/countRight);
-				double var = (sumSqLeft+sumSqRight)/ids.length - Math.pow((sumLeft+sumRight)/ids.length, 2.0);
-				double score = 1 - (countLeft*varLeft + countRight*varRight) / ids.length / var;
-				
-				// if variance is 0
-				if (var<zero*zero) {
-					return makeLeaf(ids);
-				}
-				
-				if (score>score_best) {
-					score_best = score;
-					col_best   = col;
-					t_best     = t;
-					leftConst  = (varLeft<zero*zero);
-					rightConst = (varRight<zero*zero);
-					countLeftBest  = countLeft;
-					countRightBest = countRight;
-				}
-			}
+		double[] scores = new double[nTasks];
+		for (int i=0; i<ids.length; i++) {
+			int n = ids[i];
+			counts[tasks[n]] += 1;
+			sums[tasks[n]]   += output[n];
+			sumSq[tasks[n]]  += outputSq[n];
+		}
+		for (int task : nodeTasks) {
+			// only regularization to scores (sumsq, sums, regcounts are unaffected):
+			regcounts[task] = counts[task];
+			scores[task]  = (sums[task]+priorMean*alpha) / (counts[task] + alpha);
+			
+			// regularization:
+			//sums[task]   += priorMean*alpha;
+			//sumSq[task]  += priorMean*priorMean*alpha;
+			// when regularization is used for comparison:
+			//regcounts[task] = counts[task] + alpha;
+			// calculating regularized score:
+			//scores[task]  = sums[task] / (counts[task] + alpha);
+		}
+		
+		return scores;
+	}
 
-			k++;
-			if (k>=K) {
-				// checked enough columns, stopping:
-				break;
-			}
-		}
-		// no score has been found, all inputs are constant:
-		if (col_best<0) {
-			return makeLeaf(ids);
-		}
+	private double getOutputMean(int[] ids) {
+		double mean = 0;
 		
-		// outputting the tree using the best score cut:
-		int[] idsLeft  = new int[countLeftBest];
-		int[] idsRight = new int[countRightBest];
-		int nLeft=0, nRight=0;
-		for (int n=0; n<ids.length; n++) {
-			if (input.get(ids[n], col_best) < t_best) {
-				// element goes to the left tree:
-				idsLeft[nLeft] = ids[n];
-				nLeft++;
-			} else {
-				// element goes to the right tree:
-				idsRight[nRight] = ids[n];
-				nRight++;
-			}
+		for (int i=0; i<ids.length; i++) {
+			mean += this.output[ids[i]];
 		}
-		BinaryTree bt = new BinaryTree();
-		bt.column    = col_best;
-		bt.threshold = t_best;
-		bt.nSuccessors = ids.length;
-		if (leftConst) { 
-			bt.left = makeLeaf(idsLeft); // left child's output is constant 
-		} else {  
-			bt.left  = this.buildTree(nmin, K, idsLeft, randomCols); 
-		}
-		if (rightConst) {
-			bt.right = makeLeaf(idsRight); // right child's output is constant
-		} else {
-			bt.right = this.buildTree(nmin, K, idsRight, randomCols);
-		}
-		// this value is used only for CV:
-		bt.value  = bt.left.value*bt.left.nSuccessors + bt.right.value*bt.right.nSuccessors;
-		bt.value /= bt.nSuccessors;
-		return bt;
+		mean /= ids.length;
+		return mean;
 	}
 	
 	/**
 	 * @param ids
 	 * @return builds a leaf node and returns it with the given ids.
 	 */
-	public BinaryTree makeLeaf(int[] ids) {
+	@Override
+	public BinaryTree makeLeaf(int[] ids, Set<Integer> tasks) {
 		// terminal node:
 		BinaryTree bt = new BinaryTree();
 		bt.value = 0;
 		bt.nSuccessors = ids.length;
+		bt.tasks = tasks;
 		for (int n=0; n<ids.length; n++) {
 			bt.value += output[ids[n]];
 		}
@@ -429,5 +551,6 @@ public class ExtraTrees extends AbstractTrees<BinaryTree> {
 
 //		System.out.println( Arrays.toString( bt.countColumns(m.ncols)) );
 	}
+
 
 }

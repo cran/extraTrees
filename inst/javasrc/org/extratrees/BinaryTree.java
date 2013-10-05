@@ -1,6 +1,6 @@
 package org.extratrees;
 
-public class BinaryTree {
+public class BinaryTree extends AbstractBinaryTree {
 	/** tree for elements below threshold.
 	 * if left==null, it is a leaf node
      * if left!=null, not a leaf
@@ -8,12 +8,6 @@ public class BinaryTree {
 	public BinaryTree left;
 	/** tree for elements equal or above threshold. */
 	public BinaryTree right;
-	/** number of elements in the tree */
-	public int    nSuccessors;
-	/** feature ID used for cutting */
-	public int    column=-1;
-	/** threshold of cutting */
-	public double threshold; 
 	/** value of the node (estimated by its nodes), value of the node.
 	 *  Non-leaf nodes also store value, allowing to change size of final nodes on-the-fly. */
 	public double value=Double.NEGATIVE_INFINITY;  
@@ -21,7 +15,22 @@ public class BinaryTree {
 	public BinaryTree() {
 		
 	}
-	
+
+
+	/**
+	 * @param input the vector of input values
+	 * @return the leaf node (BinaryTree) for the input
+	 */
+	public BinaryTree getLeaf(double[] input) {
+		if (left==null) {
+			return this;
+		}
+		if (input[column]<threshold) {
+			return left.getLeaf(input);
+		}
+		return right.getLeaf(input);
+	}
+
 	/**
 	 * Returns the value from the whole tree.
 	 * @param input
@@ -36,6 +45,31 @@ public class BinaryTree {
 		}
 		return right.getValue(input);
 	}
+	
+
+	/**
+	 * @param input
+	 * @param task
+	 * @return return multitask value for given input and task
+	 */
+	public double getValueMT(double[] input, int task) {
+		if (left==null) {
+			return value;
+		}
+		if (column<0) {
+			// task cut:
+			if (left.tasks.contains(task)) {
+				return left.getValueMT(input, task);
+			}
+			return right.getValueMT(input, task);
+		}
+		// feature cut
+		if (input[column]<threshold) {
+			return left.getValueMT(input, task);
+		}
+		return right.getValueMT(input, task);
+	}
+
 	
 	/**
 	 * Returns values for data points, each data point is a row of the matrix.

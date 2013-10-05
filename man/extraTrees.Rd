@@ -14,6 +14,10 @@
              numRandomCuts = 1,
              evenCuts = FALSE,
              numThreads = 1,
+             quantile = F,
+             tasks = NULL,
+             probOfTaskCuts = 1.0,
+             numRandomTaskCuts = 1,
              ...)
 }
 \arguments{
@@ -25,6 +29,11 @@
   \item{numRandomCuts}{ the number of random cuts for each (randomly chosen) feature (default 1, which corresponds to the official ExtraTrees method). The higher the number of cuts the higher the chance of a good cut. }
   \item{evenCuts}{ if FALSE then cutting thresholds are uniformly sampled (default). If TRUE then the range is split into even intervals (the number of intervals is numRandomCuts) and a cut is uniformly sampled from each interval. }
   \item{numThreads}{ the number of CPU threads to use (default is 1). }
+  \item{quantile}{ if TRUE then quantile regression is performed (default is FALSE), only for regression data.
+                   Then use predict(et, newdata, quantile=k) to make predictions for k quantile. }
+  \item{tasks}{ list of tasks, integers from 1 and up. NULL if no multi-task learning }
+  \item{probOfTaskCuts}{ probability of task cut at a node (default 1.0). Used only if tasks is specified. } 
+  \item{numRandomTaskCuts}{ number of times task cut is performed at a node (default 1). Used only if tasks is specified. }
   \item{...}{ not used currently. }
 }
 \details{
