@@ -15,9 +15,13 @@
              evenCuts = FALSE,
              numThreads = 1,
              quantile = F,
+             weights = NULL,
+             subsetSizes = NULL,
+             subsetGroups = NULL,
              tasks = NULL,
-             probOfTaskCuts = 1.0,
+             probOfTaskCuts = mtry / ncol(x),
              numRandomTaskCuts = 1,
+             na.action = "stop",
              ...)
 }
 \arguments{
@@ -31,9 +35,13 @@
   \item{numThreads}{ the number of CPU threads to use (default is 1). }
   \item{quantile}{ if TRUE then quantile regression is performed (default is FALSE), only for regression data.
                    Then use predict(et, newdata, quantile=k) to make predictions for k quantile. }
+  \item{weights}{ list of weights, positive real values. NULL means standard learning, i.e. equal weights. }
+  \item{subsetSizes}{ subset size (one integer) or subset sizes (vector of integers, requires subsetGroups), if supplied every tree is built from a random subset of size subsetSizes. NULL means no subsetting, i.e. all samples are used. }
+  \item{subsetGroups}{ list specifying subset group for each sample: from samples in group g, each tree will randomly select subsetSizes[g] samples. }
   \item{tasks}{ list of tasks, integers from 1 and up. NULL if no multi-task learning }
-  \item{probOfTaskCuts}{ probability of task cut at a node (default 1.0). Used only if tasks is specified. } 
+  \item{probOfTaskCuts}{ probability of performing task cut at a node (default mtry / ncol(x)). Used only if tasks is specified. } 
   \item{numRandomTaskCuts}{ number of times task cut is performed at a node (default 1). Used only if tasks is specified. }
+  \item{na.action}{ specifies how to handle NA in x: "stop" (default) will give error is any NA present, "zero" will set all NA to zero and "fuse" will build trees by skipping samples when the chosen feature is NA for them.} 
   \item{...}{ not used currently. }
 }
 \details{
@@ -60,6 +68,16 @@
        0.1*runif(nrow(x))
   et <- extraTrees(x, y, nodesize=3, mtry=p, numRandomCuts=2)
   yhat <- predict(et, x)
+  
+  ## Multi-task regression with ExtraTrees:
+  n <- 1000  ## number of samples
+  p <- 5     ## number of dimensions
+  x <- matrix(runif(n*p), n, p)
+  task <- sample(1:10, size=n, replace=TRUE)
+  ## y depends on the task: 
+  y <- 0.5*(x[,1]>0.5) + 0.6*(x[,2]>0.6) + 0.8*(x[cbind(1:n,(task \%\% 2) + 3)]>0.4)
+  et <- extraTrees(x, y, nodesize=3, mtry=p-1, numRandomCuts=2, tasks=task)
+  yhat <- predict(et, x, newtasks=task)
 }
 \keyword{regression,classification,trees}
 

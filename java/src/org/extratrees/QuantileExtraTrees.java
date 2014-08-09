@@ -3,6 +3,10 @@ package org.extratrees;
 import java.util.ArrayList;
 import java.util.Set;
 
+import org.extratrees.data.Array2D;
+import org.extratrees.data.Matrix;
+import org.extratrees.data.Row;
+
 public class QuantileExtraTrees extends ExtraTrees {
 
 	public QuantileExtraTrees(Matrix input, double[] output) {
@@ -15,15 +19,11 @@ public class QuantileExtraTrees extends ExtraTrees {
 	 * @param quantile a value between 0.0 and 1.0. For median use 0.5
 	 * @return return quantiles for each input row. 
 	 */
-	public double[] getQuantiles(Matrix input, double k) {
-		double[] quantileValues = new double[input.nrows];
+	public double[] getQuantiles(Array2D input, double k) {
+		double[] quantileValues = new double[input.nrows()];
 		ArrayList<Double> leafValues = new ArrayList<Double>(this.trees.size());
-		double[] temp = new double[input.ncols];
-		for (int row=0; row<input.nrows; row++) {
-			// copy row to temp:
-			input.copyRow(row, temp);
-			// get all leaf values for temp:
-			getLeafValues(temp, leafValues);
+		for (int row=0; row<input.nrows(); row++) {
+			getLeafValues(input.getRow(row), leafValues);
 			// doing quickselect:
 			quantileValues[row] = QuickSelect.quickSelect(leafValues, k);
 		}
@@ -35,11 +35,13 @@ public class QuantileExtraTrees extends ExtraTrees {
 	 * @param input
 	 * @param values 
 	 */
-	public void getLeafValues(double[] input, ArrayList<Double> values) {
+	public void getLeafValues(Row input, ArrayList<Double> values) {
 		values.clear();
 		for(BinaryTree t : trees) {
 			QuantileBinaryTree leaf = (QuantileBinaryTree)t.getLeaf(input);
-			values.addAll( leaf.values );
+			if (leaf != null) {
+				values.addAll( leaf.values );
+			}
 		}
 	}
 	
@@ -53,7 +55,7 @@ public class QuantileExtraTrees extends ExtraTrees {
 	public BinaryTree makeLeaf(int[] ids, Set<Integer> tasks) {
 		// terminal node:
 		QuantileBinaryTree bt = new QuantileBinaryTree();
-		bt.value = 0;
+		bt.value = 0d;
 		bt.nSuccessors = ids.length;
 		bt.tasks = tasks;
 		bt.values = new ArrayList<Double>(ids.length);

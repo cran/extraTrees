@@ -26,6 +26,9 @@ public class QuickSelect {
      * @param k the desired rank (1 is minimum) in the entire ArrayList.
      */
     public static double quickSelect( ArrayList<Double> a, int k ) {
+    	if (k <= 0) {
+    		return Double.NaN;
+    	}
         quickSelect( a, 0, a.size() - 1, k );
         return a.get(k-1);
     }
@@ -39,7 +42,7 @@ public class QuickSelect {
      * @param high the right-most index of the subarray.
      * @param k the desired rank (1 is minimum) in the entire array.
      */
-    private static <T> void quickSelect( ArrayList<Double> a, int low, int high, int k ) {
+    private static void quickSelect( ArrayList<Double> a, int low, int high, int k ) {
         if( low + CUTOFF > high )
             insertionSort( a, low, high );
         else {
