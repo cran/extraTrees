@@ -1,4 +1,4 @@
-a2afccba4c8be048455c8533574a099b *DESCRIPTION
+aae2b0327fa40c9b5dfccd41dfb4a38f *DESCRIPTION
 84c9fcb650a94aab08464f485c129907 *NAMESPACE
 7564aa41011d35bcab8f151ad9da21ac *R/extraTrees.R
 9fa9f99c0e5f1b9bdc292b9396a512d6 *R/extraTrees.default.R
@@ -7,14 +7,16 @@ dd6d9f8b0148898455de66f4a72966af *R/predict.extraTrees.R
 a1002c3eccbf30a5382b1010f9cbcdb3 *R/print.extraTrees.R
 aaee8dfdd099dd7022f3ccbb9665854b *R/setMemory.R
 b6b0bfbcd8e713f88be4ff0b57d10552 *build/vignette.rds
-bc6a7ef756fea53050f65d567587a347 *inst/CHANGELOG
+9f429cfd5eb96e718b36df67141ee51b *inst/CHANGELOG
+07a2f8c7983ae06d6ef3ef8bfc7bcb6f *inst/CITATION
 91c59847c46c1af2b01602d064232b36 *inst/doc/extraTrees.Rnw
-e78f9cf05d584587228df8868ccf1b20 *inst/doc/extraTrees.pdf
-2abea54a0222d0261ddf310c6e305b96 *inst/java/ExtraTrees.jar
+81a436e6c24d8a7b7b28736ae0a9caf6 *inst/doc/extraTrees.pdf
+41c15b0e807d9a47ef8a19f34c801493 *inst/java/ExtraTrees.jar
 87c2f7d04b56a2d23917deae999b5c7d *inst/tests/test-all.R
 4c2d56445766b8684abc1a26a0770338 *inst/tests/testthat/test-classification.r
 f86f21f4f99624990ca91fdb197e292d *inst/tests/testthat/test-multitask.r
 a6265105f3ed27fc7bfe04f3fa51a05e *inst/tests/testthat/test-na.r
+162047fabbba9d7b42e1054cf4f8f8aa *inst/tests/testthat/test-quantile.r
 59cf69f052ebf77f6731a46fd6fb472c *inst/tests/testthat/test-regression.r
 97f38d00bf7201185ab26c7d7c913494 *inst/tests/testthat/test-sparse-input.r
 28598d0f1e5eaa73cb64e7c72d048ba8 *java/src/org/extratrees/AbstractBinaryTree.java
@@ -25,7 +27,7 @@ ec0f31f15bc58c0016458942c6615e76 *java/src/org/extratrees/ExtraTrees.java
 dd644c08003cdaab879c0ad25f3bdb1d *java/src/org/extratrees/FactorBinaryTree.java
 7b2f9a4d0ae12ac9f3cace017416e075 *java/src/org/extratrees/FactorExtraTrees.java
 2454e9d8ba9e90870a29a8ee5ae5b08a *java/src/org/extratrees/QuantileBinaryTree.java
-193da96fe38233f4df3788ca9735ad86 *java/src/org/extratrees/QuantileExtraTrees.java
+c2220c91af38f5b3698a1641f706cd04 *java/src/org/extratrees/QuantileExtraTrees.java
 802b75448c2872c2d88b243068d95821 *java/src/org/extratrees/QuickSelect.java
 6dc19d72683d1b5cff2690b2671aebd5 *java/src/org/extratrees/ShuffledIterator.java
 c65d99395ff557d96b62aab2d114ce8b *java/src/org/extratrees/TaskCutResult.java
@@ -33,7 +35,7 @@ c65d99395ff557d96b62aab2d114ce8b *java/src/org/extratrees/TaskCutResult.java
 5555a9461612b2f765c3759fba252419 *java/src/org/extratrees/data/CSparseMatrix.java
 50e5505dbf456b85a3114f45b9519f7e *java/src/org/extratrees/data/Matrix.java
 1672d92cd8d6b7db7b18b8ec37ce8d5a *java/src/org/extratrees/data/Row.java
-4ce51635d85be33ebedc56a13b6276fb *man/extraTrees.Rd
+f7be90b1eaced62622de461139c84f37 *man/extraTrees.Rd
 a0bf9212c9f2d876b773f197c0441365 *man/predict.extraTrees.Rd
 b5b27cfb5d9d4394f8ea13523267706f *man/selectTrees.Rd
 87a19571cf53ac2a48f9f5f62581f053 *man/setJavaMemory.Rd
