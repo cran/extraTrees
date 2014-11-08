@@ -1,4 +1,5 @@
 package org.extratrees;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
@@ -6,10 +7,16 @@ import java.util.Set;
 import org.extratrees.data.Array2D;
 
 
-public class FactorExtraTrees extends AbstractTrees<FactorBinaryTree, Integer> {
-	int[] output;
+public class FactorExtraTrees extends AbstractTrees<FactorBinaryTree, Integer> implements Serializable {
+	private static final long serialVersionUID = 3625952360819832098L;
+	
+	transient int[] output;
 	/** number of factors: */
 	int nFactors;
+	
+	public FactorExtraTrees(int nFactors) {
+		this.nFactors = nFactors;
+	}
 
 	public FactorExtraTrees(Array2D input, int[] output) {
 		this(input, output, null);
@@ -56,7 +63,7 @@ public class FactorExtraTrees extends AbstractTrees<FactorBinaryTree, Integer> {
 	 * only the selected trees specified by {@code selection}.
 	 */
 	public FactorExtraTrees selectTrees(boolean[] selection) {
-		FactorExtraTrees newET = new FactorExtraTrees(input, output, tasks);
+		FactorExtraTrees newET = new FactorExtraTrees(this.nFactors);
 		newET.trees = new ArrayList<FactorBinaryTree>();
 		for (int i=0; i<selection.length; i++) {
 			if (!selection[i]) {
